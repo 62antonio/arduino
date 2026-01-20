@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Arduino Dashboard</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f0f2f5; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+        .card { background: white; padding: 2rem; border-radius: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); text-align: center; width: 300px; }
+        h1 { font-size: 1.2rem; color: #555; margin-bottom: 2rem; }
+        .temp-display { font-size: 4rem; font-weight: bold; color: #007bff; margin: 1rem 0; }
+        .unit { font-size: 1.5rem; color: #888; }
+        button { background: #007bff; color: white; border: none; padding: 12px 24px; border-radius: 30px; cursor: pointer; font-size: 1rem; transition: 0.3s; }
+        button:hover { background: #0056b3; }
+        #status { margin-top: 1rem; font-size: 0.8rem; color: #999; }
+    </style>
+</head>
+<body>
+
+<div class="card">
+    <h1>Temperatura Arduino</h1>
+    <div class="temp-display">
+        <span id="value">--</span><span class="unit">°C</span>
+    </div>
+    <button id="connectBtn">Connetti Bluetooth</button>
+    <p id="status">Disconnesso</p>
+</div>
+
+<script>
+    const connectBtn = document.getElementById('connectBtn');
+    const valueEl = document.getElementById('value');
+    const statusEl = document.getElementById('status');
+
+    // UUID del Servizio Nordic UART (NUS)
+    const UART_SERVICE_UUID = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
+    const UART_TX_CHARACTERISTIC_UUID = '6e400003-b5a3-f393-e0a9-e50e24dcca9e';
+
+    connectBtn.addEventListener('click', async () => {
+        try {
+            statusEl.textContent = "Ricerca dispositivo...";
+            
+            // 1. Richiesta del dispositivo
+            const device = await navigator.bluetooth.requestDevice({
+                filters: [{ services: [UART_SERVICE_UUID] }]
+            });
+
+            statusEl.textContent = "Connessione in corso...";
+            const server = await device.gatt.connect();
+
+            // 2. Ottenimento del servizio
+            const service = await server.getPrimaryService(UART_SERVICE_UUID);
+
+            // 3. Ottenimento della caratteristica TX (quella che Arduino usa per inviare)
+            const characteristic = await service.getCharacteristic(UART_TX_CHARACTERISTIC_UUID);
+
+            // 4. Attivazione delle notifiche
+            await characteristic.startNotifications();
+            
+            statusEl.textContent = "Connesso!";
+            connectBtn.style.display = "none"; // Nascondi pulsante se connesso
+
+            characteristic.addEventListener('characteristicvaluechanged', (event) => {
+                const value = new TextDecoder().decode(event.target.value);
+                // Puliamo la stringa (rimuoviamo eventuali spazi o unità se inviate da Arduino)
+                const numericValue = value.replace(/[^\d.-]/g, '');
+                valueEl.textContent = numericValue;
+            });
+
+            device.addEventListener('gattserverdisconnected', () => {
+                statusEl.textContent = "Disconnesso";
+                connectBtn.style.display = "inline-block";
+                valueEl.textContent = "--";
+            });
+
+        } catch (error) {
+            console.error(error);
+            statusEl.textContent = "Errore: " + error.message;
+        }
+    });
+</script>
+
+</body>
+</html>
